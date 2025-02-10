@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة الشطرنج</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+        }
+        #chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            gap: 2px;
+            margin: 20px auto;
+            width: 500px;
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            border: 1px solid #000;
+        }
+        .row:nth-child(even) .square:nth-child(odd),
+        .row:nth-child(odd) .square:nth-child(even) {
+            background-color: #769656;
+        }
+        .row:nth-child(even) .square:nth-child(even),
+        .row:nth-child(odd) .square:nth-child(odd) {
+            background-color: #eeeed2;
+        }
+        #game-over {
+            font-size: 24px;
+            margin-top: 20px;
+            color: red;
+        }
+        #restart-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>لعبة الشطرنج</h1>
+    <div id="chessboard"></div>
+    <div id="game-over"></div>
+    <button id="restart-button" style="display: none;">إعادة التشغيل</button>
+    <script>
+        class ChessGame {
+            constructor() {
+                this.board = this.createBoard();
+                this.turn = 'white';
+                this.selectedPiece = null;
+                this.gameOver = false;
+                this.initGame();
+            }
+
+            createBoard() {
+                return [
+                    ['♜', '♞', '♝', '♛', '♚', '♝', '♞', '♜'],
+                    ['♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟'],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null],
+                    ['♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙'],
+                    ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖']
+                ];
+            }
+
+            initGame() {
+                this.renderBoard();
+                this.updateTurnDisplay();
+                document.getElementById('restart-button').addEventListener('click', () => this.restartGame());
+            }
+
+            renderBoard() {
+                let boardHTML = '<div id="board" style="display: grid; grid-template-columns: repeat(8, 60px); width: 500px;">';
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        let piece = this.board[i][j] ? this.board[i][j] : '';
+                        let color = (i + j) % 2 === 0 ? '#eeeed2' : '#769656';
+                        boardHTML += `<div class="square" data-row="${i}" data-col="${j}" draggable="true" 
+                            style="width: 60px; height: 60px; background: ${color}; display: flex; align-items: center; 
+                            justify-content: center; font-size: 24px;">${piece}</div>`;
+                    }
+                }
+                boardHTML += '</div>';
+                document.getElementById('chessboard').innerHTML = boardHTML;
+                this.addDragAndDrop();
+            }
+
+            addDragAndDrop() {
+                document.querySelectorAll('.square').forEach(square => {
+                    square.addEventListener('dragstart', (e) => {
+                        if (this.gameOver) {
+                            e.preventDefault();
+                            return;
+                        }
+                        let fromRow = parseInt(e.target.dataset.row);
+                        let fromCol = parseInt(e.target.dataset.col);
+                        let piece = this.board[fromRow][fromCol];
+
+                        // التحقق من أن الدور هو الصحيح
+                        if ((this.turn === 'white' && !"♙♖♘♗♕♔".includes(piece)) ||
+                            (this.turn === 'black' && !"♟♜♞♝♛♚".includes(piece))) {
+                            e.preventDefault();
+                            return;
+                        }
+
+                        this.selectedPiece = e.target;
+                    });
+
+                    square.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                    });
+
+                    square.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        if (this.selectedPiece && this.selectedPiece !== e.target && !this.gameOver) {
+                            let fromRow = parseInt(this.selectedPiece.dataset.row);
+                            let fromCol = parseInt(this.selectedPiece.dataset.col);
+                            let toRow = parseInt(e.target.dataset.row);
+                            let toCol = parseInt(e.target.dataset.col);
+
+                            if (this.isValidMove(fromRow, fromCol, toRow, toCol)) {
+                                this.board[toRow][toCol] = this.board[fromRow][fromCol];
+                                this.board[fromRow][fromCol] = null;
+                                this.turn = this.turn === 'white' ? 'black' : 'white';
+                                this.renderBoard();
+                                this.updateTurnDisplay();
+                                this.checkGameOver();
+                                this.checkPawnPromotion(toRow, toCol);
+                            }
+                        }
+                    });
+                });
+            }
+
+            isValidMove(fromRow, fromCol, toRow, toCol) {
+                const piece = this.board[fromRow][fromCol];
+                const targetPiece = this.board[toRow][toCol];
+
+                // الحركة غير صالحة إذا كانت القطعة تتحرك إلى نفس الموقع
+                if (fromRow === toRow && fromCol === toCol) {
+                    return false;
+                }
+
+                // الحركة غير صالحة إذا كانت القطعة تتحرك إلى موقع يحتوي على قطعة من نفس اللون
+                if (targetPiece && (this.turn === 'white' ? "♙♖♘♗♕♔".includes(targetPiece) : "♟♜♞♝♛♚".includes(targetPiece))) {
+                    return false;
+                }
+
+                // قواعد حركة القطع
+                switch (piece) {
+                    // حركة البيادق (الجنود)
+                    case '♙':
+                        if (fromCol === toCol && fromRow - 1 === toRow && !targetPiece) return true;
+                        if (fromCol === toCol && fromRow === 6 && toRow === 4 && !this.board[5][toCol] && !targetPiece) return true;
+                        if (Math.abs(fromCol - toCol) === 1 && fromRow - 1 === toRow && targetPiece) return true;
+                        break;
+                    case '♟':
+                        if (fromCol === toCol && fromRow + 1 === toRow && !targetPiece) return true;
+                        if (fromCol === toCol && fromRow === 1 && toRow === 3 && !this.board[2][toCol] && !targetPiece) return true;
+                        if (Math.abs(fromCol - toCol) === 1 && fromRow + 1 === toRow && targetPiece) return true;
+                        break;
+
+                    // حركة القلعة (الرخ)
+                    case '♖':
+                    case '♜':
+                        if (fromRow === toRow || fromCol === toCol) {
+                            if (this.isPathClear(fromRow, fromCol, toRow, toCol)) return true;
+                        }
+                        break;
+
+                    // حركة الحصان
+                    case '♘':
+                    case '♞':
+                        if ((Math.abs(fromRow - toRow) === 2 && Math.abs(fromCol - toCol) === 1) ||
+                            (Math.abs(fromRow - toRow) === 1 && Math.abs(fromCol - toCol) === 2)) {
+                            return true;
+                        }
+                        break;
+
+                    // حركة الفيل
+                    case '♗':
+                    case '♝':
+                        if (Math.abs(fromRow - toRow) === Math.abs(fromCol - toCol)) {
+                            if (this.isPathClear(fromRow, fromCol, toRow, toCol)) return true;
+                        }
+                        break;
+
+                    // حركة الوزير (الملكة)
+                    case '♕':
+                    case '♛':
+                        if (fromRow === toRow || fromCol === toCol || Math.abs(fromRow - toRow) === Math.abs(fromCol - toCol)) {
+                            if (this.isPathClear(fromRow, fromCol, toRow, toCol)) return true;
+                        }
+                        break;
+
+                    // حركة الملك
+                    case '♔':
+                    case '♚':
+                        if (Math.abs(fromRow - toRow) <= 1 && Math.abs(fromCol - toCol) <= 1) {
+                            return true;
+                        }
+                        break;
+                }
+
+                return false; // الحركة غير صالحة إذا لم تمر بأي من الشروط السابقة
+            }
+
+            isPathClear(fromRow, fromCol, toRow, toCol) {
+                let rowStep = fromRow < toRow ? 1 : -1;
+                let colStep = fromCol < toCol ? 1 : -1;
+
+                if (fromRow === toRow) {
+                    for (let col = fromCol + colStep; col !== toCol; col += colStep) {
+                        if (this.board[fromRow][col]) return false;
+                    }
+                } else if (fromCol === toCol) {
+                    for (let row = fromRow + rowStep; row !== toRow; row += rowStep) {
+                        if (this.board[row][fromCol]) return false;
+                    }
+                } else {
+                    for (let row = fromRow + rowStep, col = fromCol + colStep; row !== toRow; row += rowStep, col += colStep) {
+                        if (this.board[row][col]) return false;
+                    }
+                }
+
+                return true;
+            }
+
+            updateTurnDisplay() {
+                document.getElementById('turn-display').innerText = `الدور الحالي: ${this.turn === 'white' ? 'الأبيض' : 'الأسود'}`;
+            }
+
+            checkGameOver() {
+                const king = this.turn === 'white' ? '♔' : '♚';
+                let kingPosition = null;
+
+                // البحث عن موقع الملك
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        if (this.board[i][j] === king) {
+                            kingPosition = { row: i, col: j };
+                            break;
+                        }
+                    }
+                    if (kingPosition) break;
+                }
+
+                if (!kingPosition) {
+                    this.gameOver = true;
+                    document.getElementById('game-over').innerText = `كش مات! الفائز هو ${this.turn === 'white' ? 'الأسود' : 'الأبيض'}`;
+                    document.getElementById('restart-button').style.display = 'block';
+                    return;
+                }
+
+                // التحقق مما إذا كان الملك في حالة كش
+                if (this.isKingInCheck(kingPosition.row, kingPosition.col)) {
+                    if (this.isCheckmate(kingPosition.row, kingPosition.col)) {
+                        this.gameOver = true;
+                        document.getElementById('game-over').innerText = `كش مات! الفائز هو ${this.turn === 'white' ? 'الأسود' : 'الأبيض'}`;
+                        document.getElementById('restart-button').style.display = 'block';
+                    } else {
+                        document.getElementById('game-over').innerText = 'كش!';
+                    }
+                } else {
+                    document.getElementById('game-over').innerText = '';
+                }
+            }
+
+            isKingInCheck(row, col) {
+                const king = this.board[row][col];
+                const opponentPieces = this.turn === 'white' ? ["♟", "♜", "♞", "♝", "♛", "♚"] : ["♙", "♖", "♘", "♗", "♕", "♔"];
+
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        if (opponentPieces.includes(this.board[i][j])) {
+                            if (this.isValidMove(i, j, row, col)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            isCheckmate(row, col) {
+                // 1. التحقق مما إذا كان الملك لديه أي حركات قانونية
+                for (let i = row - 1; i <= row + 1; i++) {
+                    for (let j = col - 1; j <= col + 1; j++) {
+                        if (i >= 0 && i < 8 && j >= 0 && j < 8) {
+                            if (this.isValidMove(row, col, i, j)) {
+                                // محاكاة الحركة لمعرفة ما إذا كانت تزيل الكش
+                                const originalPiece = this.board[i][j];
+                                this.board[i][j] = this.board[row][col];
+                                this.board[row][col] = null;
+
+                                const isStillInCheck = this.isKingInCheck(i, j);
+
+                                // إعادة القطع إلى وضعها الأصلي
+                                this.board[row][col] = this.board[i][j];
+                                this.board[i][j] = originalPiece;
+
+                                if (!isStillInCheck) {
+                                    return false; // الملك لديه حركة تزيل الكش
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. التحقق مما إذا كان يمكن لأي قطعة أخرى أن تمنع الكش
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        const piece = this.board[i][j];
+                        if (piece && (this.turn === 'white' ? "♙♖♘♗♕♔".includes(piece) : "♟♜♞♝♛♚".includes(piece))) {
+                            for (let x = 0; x < 8; x++) {
+                                for (let y = 0; y < 8; y++) {
+                                    if (this.isValidMove(i, j, x, y)) {
+                                        // محاكاة الحركة لمعرفة ما إذا كانت تزيل الكش
+                                        const originalPiece = this.board[x][y];
+                                        this.board[x][y] = this.board[i][j];
+                                        this.board[i][j] = null;
+
+                                        const isStillInCheck = this.isKingInCheck(row, col);
+
+                                        // إعادة القطع إلى وضعها الأصلي
+                                        this.board[i][j] = this.board[x][y];
+                                        this.board[x][y] = originalPiece;
+
+                                        if (!isStillInCheck) {
+                                            return false; // يوجد حركة تمنع الكش
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. إذا لم توجد أي حركة تمنع الكش، إذًا كش مات
+                return true;
+            }
+
+            checkPawnPromotion(row, col) {
+    const piece = this.board[row][col];
+    if ((piece === '♙' && row === 0) || (piece === '♟' && row === 7)) {
+        const isWhite = piece === '♙';
+        const pieces = isWhite ? ["♕", "♖", "♗", "♘"] : ["♛", "♜", "♝", "♞"];
+        const newPiece = prompt(`اختر قطعة لتحويل البيدق إليها (${pieces.join(', ')}):`);
+        if (newPiece && pieces.includes(newPiece)) {
+            this.board[row][col] = newPiece;
+            this.renderBoard();
+        } else {
+            alert("اختيار غير صالح. سيتم تحويل البيدق إلى وزير افتراضيًا.");
+            this.board[row][col] = isWhite ? "♕" : "♛";
+            this.renderBoard();
+        }
+    }
+}
+
+            restartGame() {
+                this.board = this.createBoard();
+                this.turn = 'white';
+                this.gameOver = false;
+                this.renderBoard();
+                this.updateTurnDisplay();
+                document.getElementById('game-over').innerText = '';
+                document.getElementById('restart-button').style.display = 'none';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.innerHTML += '<div id="turn-display" style="font-size: 20px; margin-top: 10px;"></div>';
+            document.body.innerHTML += '<div id="chessboard"></div>';
+
+            setTimeout(() => {
+                new ChessGame();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
